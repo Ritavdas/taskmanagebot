@@ -1,0 +1,26 @@
+{
+  "name": "whatnottodo-bot",
+  "version": "0.1.0",
+  "description": "Personal task OS — Discord bot + Linear + AI parsing. Morning digest at 10:30 AM, evening close-out at 10:30 PM.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "bootstrap": "node src/bootstrap.js",
+    "digest:test": "node src/index.js --run-digest",
+    "closeout:test": "node src/index.js --run-closeout"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.63",
+    "@linear/sdk": "^29.0.0",
+    "ai": "^6.0.182",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.7",
+    "node-cron": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
