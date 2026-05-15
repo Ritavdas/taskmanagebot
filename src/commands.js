@@ -53,10 +53,12 @@ export async function handleCommand(text, replyFn) {
     return replyFn([
       '**commands**',
       '`add <description>` — capture a task',
+      '`add P0 <description>` — capture with priority',
       '`done <ref>` — complete it',
       '`today <ref>` — pull into today',
       '`plan <ref>` — move from inbox to planned',
       '`move <ref> to <date>` — reschedule',
+      '`priority <ref> P1` — set priority (P0 urgent, P1 high, P2 normal, P3 low, P4 none)',
       '`blocked <ref> because <reason>` — mark blocked',
       '`drop <ref>` — cancel',
       '`list` — today\'s tasks',
@@ -109,6 +111,22 @@ export async function handleCommand(text, replyFn) {
     if (error) return replyFn(error);
     await linear.moveToToday(issue.id);
     return replyFn(`☀️ pulled into today · \`${issue.identifier}\` ${issue.title}`);
+  }
+
+  m = trimmed.match(/^(?:priority|prio)\s+(.+?)\s+(p[0-4]|urgent|high|normal|medium|low|none|no priority)$/i);
+  if (m) {
+    const { issue, error } = await resolveIssue(m[1]);
+    if (error) return replyFn(error);
+    await linear.setPriority(issue.id, m[2]);
+    return replyFn(`🚦 set ${linear.priorityCode(m[2])} · \`${issue.identifier}\` ${issue.title}`);
+  }
+
+  m = trimmed.match(/^(p[0-4])\s+(.+)/i);
+  if (m) {
+    const { issue, error } = await resolveIssue(m[2]);
+    if (error) return replyFn(error);
+    await linear.setPriority(issue.id, m[1]);
+    return replyFn(`🚦 set ${linear.priorityCode(m[1])} · \`${issue.identifier}\` ${issue.title}`);
   }
 
   m = trimmed.match(/^plan\s+(.+)/i);

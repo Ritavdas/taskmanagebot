@@ -17,9 +17,10 @@ Apple Notes (raw thoughts) → Discord DM → AI parser → Linear (source of tr
 - **Commands** (anytime, in DM):
   - `done PER-12` or `done linkedin` (substring match)
   - `move PER-12 to friday`
+  - `priority PER-12 P0` or `p1 linkedin`
   - `blocked PER-12 because waiting on Tushar`
   - `drop PER-12`
-  - `add fix the launchpad bug for the meetup`
+  - `add P0 fix the launchpad bug for the meetup`
   - `today PER-12` (mark as focus for today)
   - `plan PER-12` (move from inbox to planned)
   - `list` (show today's tasks)
@@ -118,7 +119,7 @@ pm2 startup
 
 - `src/index.js` — Discord client, cron scheduler, message router
 - `src/linear.js` — Linear API wrapper (CRUD + state/project caching)
-- `src/ai.js` — OpenRouter-powered intent parsing and task extraction
+- `src/ai.js` — OpenRouter-powered intent parsing, priority parsing, and task extraction
 - `src/commands.js` — Conversational command handlers
 - `src/digest.js` — Morning digest builder
 - `src/closeout.js` — Evening close-out builder
@@ -136,3 +137,13 @@ pm2 startup
 | Done | Done |
 | Dropped | Cancelled |
 | Blocked | label `blocked` added (state preserved) |
+
+## Priority mapping
+
+| Bot shorthand | Linear priority |
+|---|---|
+| P0 | Urgent |
+| P1 | High |
+| P2 | Normal |
+| P3 | Low |
+| P4 | No priority |

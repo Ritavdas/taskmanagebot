@@ -31,15 +31,16 @@ ${AREAS.map(a => `- ${a}`).join('\n')}
 
 Rules:
 1. Only extract things that are clear next actions. Vague thoughts/feelings → skip them.
-2. Each task needs a short imperative title (max 10 words), a single area, and optional dueDate (YYYY-MM-DD) if stated.
+2. Each task needs a short imperative title (max 10 words), a single area, optional priority, and optional dueDate (YYYY-MM-DD) if stated.
 3. If user mentions "today" → dueDate is today. "tomorrow" → tomorrow. "friday" → next friday. "next week" → leave dueDate null.
 4. If something is just a thought, idea, or feeling without an action → put it in "thoughts" array, not "tasks".
 5. Professional work tasks must be sanitized — no internal Microsoft/Azure project names, no customer details, no confidential info. Generalize them.
+6. Priority mapping: P0/urgent/critical → "P0"; P1/high/important → "P1"; P2/normal/default → "P2"; P3/low/someday → "P3"; no stated priority → null.
 
 Return ONLY valid JSON in this shape:
 {
   "tasks": [
-    { "title": "...", "area": "...", "dueDate": "YYYY-MM-DD" | null, "context": "..." | null }
+    { "title": "...", "area": "...", "priority": "P0" | "P1" | "P2" | "P3" | null, "dueDate": "YYYY-MM-DD" | null, "context": "..." | null }
   ],
   "thoughts": ["..."]
 }`;
@@ -47,7 +48,7 @@ Return ONLY valid JSON in this shape:
 const ROUTE_INTENT_PROMPT = `You are the intent router for a personal task bot. Classify the user's message into ONE intent.
 
 Intents:
-- "command": user is issuing a structured command like done/move/blocked/drop/add/today/plan/list/inbox/yes/no/cancel
+- "command": user is issuing a structured command like done/move/priority/blocked/drop/add/today/plan/list/inbox/yes/no/cancel
 - "dump": user is brain-dumping multiple thoughts/tasks to triage
 - "single_task": user is describing one task to add
 - "chitchat": user is just chatting, asking a question, saying hi, etc.
@@ -58,7 +59,7 @@ Message: """{{MSG}}"""`;
 
 export async function routeIntent(message) {
   const trimmed = message.trim();
-  if (/^(done|move|blocked|drop|add|today|plan|list|inbox|yes|no|cancel|y|n|help)\b/i.test(trimmed)) {
+  if (/^(done|move|priority|prio|p0|p1|p2|p3|p4|blocked|drop|add|today|plan|list|inbox|yes|no|cancel|y|n|help)\b/i.test(trimmed)) {
     return 'command';
   }
   if (trimmed.length < 250 && !trimmed.includes('\n')) {
@@ -109,7 +110,7 @@ export async function pickFocus(issues) {
   if (issues.length <= 3) return issues;
   const summary = await Promise.all(issues.slice(0, 20).map(async (i, idx) => {
     const project = await i.project;
-    return `${idx}. [${i.identifier}] ${i.title} (${project?.name || 'no area'}, due ${i.dueDate || 'none'})`;
+    return `${idx}. [${i.identifier}] ${i.title} (${project?.name || 'no area'}, due ${i.dueDate || 'none'}, priority ${i.priorityLabel || 'none'})`;
   }));
   const { text } = await generateText({
     model: model(),

@@ -53,6 +53,44 @@ function stateByName(name) {
   return cache.states.get(name.toLowerCase());
 }
 
+const PRIORITY_BY_CODE = new Map([
+  ['p0', 1],
+  ['urgent', 1],
+  ['p1', 2],
+  ['high', 2],
+  ['p2', 3],
+  ['normal', 3],
+  ['medium', 3],
+  ['p3', 4],
+  ['low', 4],
+  ['p4', 0],
+  ['none', 0],
+  ['no priority', 0],
+]);
+
+export function normalizePriority(priority) {
+  if (priority === null || priority === undefined || priority === '') return undefined;
+  if (typeof priority === 'number') {
+    if (Number.isInteger(priority) && priority >= 0 && priority <= 4) return priority;
+    throw new Error(`Invalid Linear priority "${priority}". Use P0, P1, P2, P3, or P4.`);
+  }
+  const key = String(priority).trim().toLowerCase();
+  if (!PRIORITY_BY_CODE.has(key)) {
+    throw new Error(`Invalid priority "${priority}". Use P0, P1, P2, P3, or P4.`);
+  }
+  return PRIORITY_BY_CODE.get(key);
+}
+
+export function priorityCode(priority) {
+  const normalized = normalizePriority(priority);
+  if (normalized === undefined) return '';
+  if (normalized === 1) return 'P0';
+  if (normalized === 2) return 'P1';
+  if (normalized === 3) return 'P2';
+  if (normalized === 4) return 'P3';
+  return 'P4';
+}
+
 export async function ensureProject(name) {
   const existing = cache.projects.get(name.toLowerCase());
   if (existing) return existing;
@@ -65,10 +103,11 @@ export async function ensureProject(name) {
   return project;
 }
 
-export async function createIssue({ title, area, dueDate, description, context }) {
+export async function createIssue({ title, area, dueDate, description, context, priority }) {
   const project = area ? getProjectByArea(area) : null;
   const state = dueDate ? (stateByName('todo') || stateByName('in progress')) : stateByName('backlog');
   const body = description || context || undefined;
+  const normalizedPriority = normalizePriority(priority);
   const res = await client.createIssue({
     teamId: cache.team.id,
     title,
@@ -76,6 +115,7 @@ export async function createIssue({ title, area, dueDate, description, context }
     projectId: project?.id,
     stateId: state?.id,
     dueDate,
+    priority: normalizedPriority,
     assigneeId: cache.me.id,
   });
   return await res.issue;
@@ -113,6 +153,10 @@ export async function setState(issueId, stateName) {
 
 export async function setDueDate(issueId, dueDate) {
   await client.updateIssue(issueId, { dueDate });
+}
+
+export async function setPriority(issueId, priority) {
+  await client.updateIssue(issueId, { priority: normalizePriority(priority) });
 }
 
 export async function moveToToday(issueId) {
@@ -212,5 +256,6 @@ export async function formatIssue(issue) {
   const state = await issue.state;
   const due = issue.dueDate ? ` · due ${issue.dueDate}` : '';
   const area = project ? ` · ${project.name}` : '';
-  return `\`${issue.identifier}\` ${issue.title} _(${state?.name}${area}${due})_`;
+  const priority = issue.priority && issue.priority > 0 ? ` · ${priorityCode(issue.priority)} ${issue.priorityLabel}` : '';
+  return `\`${issue.identifier}\` ${issue.title} _(${state?.name}${area}${due}${priority})_`;
 }
