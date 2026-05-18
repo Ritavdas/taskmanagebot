@@ -84,9 +84,13 @@ Return ONLY valid JSON:
   }
 }`;
 
+const ISSUE_REF_STRICT = /\b[A-Z][A-Z0-9]*-\d+\b/;
+const EDIT_KEYWORDS = /\b(change|set|update|make|rename|edit|move|due|priority|prio|description|desc|details|notes|context|deadline|title|clear|remove|delete|unset|today|tomorrow|p[0-4])\b/i;
+
 export async function routeIntent(message) {
   const trimmed = message.trim();
-  if (/\b[A-Z0-9]+-\d+\b/i.test(trimmed)) {
+  if (ISSUE_REF_STRICT.test(trimmed) &&
+      (/^[A-Z][A-Z0-9]*-\d+\b/.test(trimmed) || EDIT_KEYWORDS.test(trimmed))) {
     return 'command';
   }
   if (/^(done|move|priority|prio|p0|p1|p2|p3|p4|blocked|drop|add|today|plan|list|inbox|yes|no|cancel|y|n|help)\b/i.test(trimmed)) {
