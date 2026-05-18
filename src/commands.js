@@ -2,8 +2,8 @@ import * as linear from './linear.js';
 import * as ai from './ai.js';
 
 const DATE_WORDS = {
-  today: () => new Date(),
-  tomorrow: () => { const d = new Date(); d.setDate(d.getDate() + 1); return d; },
+  today: () => linear.todayLocal(),
+  tomorrow: () => shiftDays(1),
   monday: () => nextWeekday(1),
   tuesday: () => nextWeekday(2),
   wednesday: () => nextWeekday(3),
@@ -13,28 +13,44 @@ const DATE_WORDS = {
   sunday: () => nextWeekday(0),
 };
 
+function shiftDays(n) {
+  const [y, m, d] = linear.todayLocal().split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
 function nextWeekday(target) {
-  const d = new Date();
-  const diff = (target - d.getDay() + 7) % 7 || 7;
-  d.setDate(d.getDate() + diff);
-  return d;
+  const [y, m, d] = linear.todayLocal().split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const diff = (target - dt.getUTCDay() + 7) % 7 || 7;
+  dt.setUTCDate(dt.getUTCDate() + diff);
+  return dt.toISOString().slice(0, 10);
 }
 
 function parseDate(str) {
   const lower = str.trim().toLowerCase();
-  if (DATE_WORDS[lower]) return DATE_WORDS[lower]().toISOString().slice(0, 10);
+  if (DATE_WORDS[lower]) return DATE_WORDS[lower]();
   if (/^\d{4}-\d{2}-\d{2}$/.test(lower)) return lower;
   const m = lower.match(/^in (\d+) days?$/);
-  if (m) {
-    const d = new Date();
-    d.setDate(d.getDate() + parseInt(m[1], 10));
-    return d.toISOString().slice(0, 10);
-  }
+  if (m) return shiftDays(parseInt(m[1], 10));
   return null;
 }
 
-function mentionedIssueRef(text) {
-  return text.match(/\b[A-Z0-9]+-\d+\b/i)?.[0] || null;
+function mentionedIssueRefs(text) {
+  return [...text.matchAll(/\b[A-Z][A-Z0-9]*-\d+\b/g)].map(m => m[0]);
+}
+
+const EDIT_KEYWORDS = /\b(change|set|update|make|rename|edit|move|due|priority|prio|description|desc|details|notes|context|deadline|title|clear|remove|delete|unset|today|tomorrow|p[0-4])\b/i;
+
+const pendingEdits = new Map();
+const PENDING_KEY = 'owner';
+
+function summarizeUpdates(updates) {
+  return Object.entries(updates).map(([k, v]) => {
+    const val = v === null ? '(cleared)' : typeof v === 'string' && v.length > 80 ? v.slice(0, 80) + '…' : v;
+    return `• ${k}: ${val}`;
+  }).join('\n');
 }
 
 async function resolveIssue(ref) {
@@ -52,6 +68,19 @@ async function resolveIssue(ref) {
 export async function handleCommand(text, replyFn) {
   const trimmed = text.trim();
   const lower = trimmed.toLowerCase();
+
+  if (/^(yes|y)$/i.test(trimmed)) {
+    const pending = pendingEdits.get(PENDING_KEY);
+    if (!pending) return replyFn('nothing pending to confirm.');
+    pendingEdits.delete(PENDING_KEY);
+    const updated = await linear.updateIssueFields(pending.issueId, pending.updates);
+    return replyFn(`✏️ updated ${await linear.formatIssue(updated)}`);
+  }
+
+  if (/^(no|n|cancel)$/i.test(trimmed)) {
+    const had = pendingEdits.delete(PENDING_KEY);
+    return replyFn(had ? 'cancelled.' : 'nothing pending to confirm.');
+  }
 
   if (/^help\b/i.test(trimmed)) {
     return replyFn([
@@ -86,8 +115,15 @@ export async function handleCommand(text, replyFn) {
     return replyFn(`**inbox** (${issues.length})\n${lines.join('\n')}`);
   }
 
-  const issueRef = mentionedIssueRef(trimmed);
-  if (issueRef && !/^(done|today|plan|move|blocked|drop|priority|prio|p[0-4])\b/i.test(trimmed)) {
+  const refs = mentionedIssueRefs(trimmed);
+  const issueRef = refs[0];
+  if (issueRef && !/^(done|today|plan|move|blocked|drop|priority|prio|p[0-4]|add|list|inbox|help|yes|no|y|n|cancel)\b/i.test(trimmed)) {
+    if (refs.length > 1) {
+      return replyFn(`found multiple issue refs (${refs.join(', ')}). edit one at a time, e.g. \`${refs[0]} <change>\`.`);
+    }
+    if (!EDIT_KEYWORDS.test(trimmed)) {
+      return replyFn(`saw \`${issueRef}\` but no edit keyword. say e.g. \`${issueRef} set priority P1\` or \`${issueRef} description <text>\`.`);
+    }
     const { issue, error } = await resolveIssue(issueRef);
     if (error) return replyFn(error);
 
@@ -102,9 +138,8 @@ export async function handleCommand(text, replyFn) {
       return replyFn(`I found \`${issue.identifier}\`, but couldn't tell what to edit. Try: \`priority ${issue.identifier} P1\`, \`move ${issue.identifier} to tomorrow\`, or \`${issue.identifier} description <text>\`.`);
     }
 
-    await linear.updateIssueFields(issue.id, updates);
-    const updatedIssue = await linear.findIssue(issue.identifier);
-    return replyFn(`✏️ updated ${await linear.formatIssue(updatedIssue)}`);
+    pendingEdits.set(PENDING_KEY, { issueId: issue.id, identifier: issue.identifier, updates });
+    return replyFn(`✏️ edit \`${issue.identifier}\` ${issue.title}?\n${summarizeUpdates(updates)}\nreply \`yes\` to confirm or \`no\` to cancel.`);
   }
 
   let m = trimmed.match(/^add\s+(.+)/is);
@@ -186,10 +221,6 @@ export async function handleCommand(text, replyFn) {
     if (error) return replyFn(error);
     await linear.markDropped(issue.id);
     return replyFn(`🗑️ dropped · \`${issue.identifier}\` ${issue.title}`);
-  }
-
-  if (/^(yes|y|no|n|cancel)$/i.test(lower)) {
-    return replyFn('nothing pending to confirm.');
   }
 
   return replyFn(`didn't recognize that command. type \`help\` for options.`);

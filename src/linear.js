@@ -3,6 +3,13 @@ import { config } from './config.js';
 
 const client = new LinearClient({ apiKey: config.linear.apiKey });
 
+export function todayLocal() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: config.schedule.timezone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+}
+
 let cache = {
   team: null,
   projects: new Map(),
@@ -122,7 +129,7 @@ export async function createIssue({ title, area, dueDate, description, context, 
 }
 
 export async function findIssue(ref) {
-  if (/^[A-Z0-9]+-\d+$/i.test(ref)) {
+  if (/^[A-Z][A-Z0-9]*-\d+$/i.test(ref)) {
     try {
       return await client.issue(ref.toUpperCase());
     } catch {
@@ -164,17 +171,21 @@ export async function updateIssueFields(issueId, fields) {
   if (fields.title !== undefined) input.title = fields.title;
   if (fields.description !== undefined) input.description = fields.description;
   if (fields.dueDate !== undefined) input.dueDate = fields.dueDate;
-  if (fields.priority !== undefined) input.priority = normalizePriority(fields.priority);
+  if (fields.priority !== undefined) {
+    const normalized = normalizePriority(fields.priority);
+    if (normalized !== undefined) input.priority = normalized;
+  }
 
   if (Object.keys(input).length === 0) {
     throw new Error('No supported issue fields were provided to update.');
   }
 
-  await client.updateIssue(issueId, input);
+  const res = await client.updateIssue(issueId, input);
+  return await res.issue;
 }
 
 export async function moveToToday(issueId) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const state = stateByName('todo');
   await client.updateIssue(issueId, { dueDate: today, stateId: state?.id });
 }
@@ -202,7 +213,7 @@ export async function markDropped(issueId) {
 }
 
 export async function getTodayList() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const issues = await client.issues({
     filter: {
       team: { id: { eq: cache.team.id } },
@@ -219,7 +230,7 @@ export async function getTodayList() {
 }
 
 export async function getOverdue() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const issues = await client.issues({
     filter: {
       team: { id: { eq: cache.team.id } },

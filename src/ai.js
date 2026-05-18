@@ -1,6 +1,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 import { config } from './config.js';
+import { todayLocal } from './linear.js';
 
 let _client = null;
 function client() {
@@ -84,9 +85,13 @@ Return ONLY valid JSON:
   }
 }`;
 
+const ISSUE_REF_STRICT = /\b[A-Z][A-Z0-9]*-\d+\b/;
+const EDIT_KEYWORDS = /\b(change|set|update|make|rename|edit|move|due|priority|prio|description|desc|details|notes|context|deadline|title|clear|remove|delete|unset|today|tomorrow|p[0-4])\b/i;
+
 export async function routeIntent(message) {
   const trimmed = message.trim();
-  if (/\b[A-Z0-9]+-\d+\b/i.test(trimmed)) {
+  if (ISSUE_REF_STRICT.test(trimmed) &&
+      (/^[A-Z][A-Z0-9]*-\d+\b/.test(trimmed) || EDIT_KEYWORDS.test(trimmed))) {
     return 'command';
   }
   if (/^(done|move|priority|prio|p0|p1|p2|p3|p4|blocked|drop|add|today|plan|list|inbox|yes|no|cancel|y|n|help)\b/i.test(trimmed)) {
@@ -98,7 +103,7 @@ export async function routeIntent(message) {
   const { text } = await generateText({
     model: model(),
     prompt: ROUTE_INTENT_PROMPT.replace('{{MSG}}', trimmed),
-    maxTokens: 20,
+    maxOutputTokens: 20,
   });
   const out = text.trim().toLowerCase();
   if (['command', 'dump', 'single_task', 'chitchat'].includes(out)) return out;
@@ -106,12 +111,12 @@ export async function routeIntent(message) {
 }
 
 export async function parseIssueEdit(text) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const { text: raw } = await generateText({
     model: model(),
     system: EDIT_ISSUE_PROMPT + `\n\nToday's date: ${today}`,
     prompt: text,
-    maxTokens: 1000,
+    maxOutputTokens: 1000,
   });
   const cleaned = raw.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '');
   try {
@@ -130,12 +135,12 @@ export async function parseIssueEdit(text) {
 }
 
 export async function parseTasks(text) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const { text: raw } = await generateText({
     model: model(),
     system: PARSE_TASK_PROMPT + `\n\nToday's date: ${today}`,
     prompt: text,
-    maxTokens: 2000,
+    maxOutputTokens: 2000,
   });
   const cleaned = raw.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '');
   try {
@@ -154,7 +159,7 @@ export async function chat(message) {
     model: model(),
     system: `You are Ritav's personal task bot. Keep replies under 3 sentences. Be direct and warm. If the user is venting or rambling, listen. If they want to add tasks, gently nudge them to use commands like "add X" or just dump a list.`,
     prompt: message,
-    maxTokens: 300,
+    maxOutputTokens: 300,
   });
   return text.trim() || 'noted.';
 }
@@ -170,7 +175,7 @@ export async function pickFocus(issues) {
     model: model(),
     system: `You pick 1-3 focus tasks for today from the user's task list. Pick by impact and urgency. Prefer tasks that move important projects forward over admin chores. Reply with ONLY the indices comma-separated, e.g. "0,3,7".`,
     prompt: summary.join('\n'),
-    maxTokens: 100,
+    maxOutputTokens: 100,
   });
   const indices = text.trim().split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n < issues.length);
   return indices.slice(0, 3).map(i => issues[i]);
