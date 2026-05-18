@@ -33,6 +33,10 @@ function parseDate(str) {
   return null;
 }
 
+function mentionedIssueRef(text) {
+  return text.match(/\b[A-Z0-9]+-\d+\b/i)?.[0] || null;
+}
+
 async function resolveIssue(ref) {
   const result = await linear.findIssue(ref);
   if (!result) return { error: `couldn't find anything matching "${ref}".` };
@@ -80,6 +84,27 @@ export async function handleCommand(text, replyFn) {
     if (issues.length === 0) return replyFn('📭 inbox is empty.');
     const lines = await Promise.all(issues.slice(0, 20).map(linear.formatIssue));
     return replyFn(`**inbox** (${issues.length})\n${lines.join('\n')}`);
+  }
+
+  const issueRef = mentionedIssueRef(trimmed);
+  if (issueRef && !/^(done|today|plan|move|blocked|drop|priority|prio|p[0-4])\b/i.test(trimmed)) {
+    const { issue, error } = await resolveIssue(issueRef);
+    if (error) return replyFn(error);
+
+    const { fields } = await ai.parseIssueEdit(trimmed);
+    const updates = {};
+    if (fields.title !== null && fields.title !== undefined) updates.title = fields.title;
+    if (fields.description !== null && fields.description !== undefined) updates.description = fields.description;
+    if (fields.dueDate !== undefined) updates.dueDate = fields.dueDate;
+    if (fields.priority !== null && fields.priority !== undefined) updates.priority = fields.priority;
+
+    if (Object.keys(updates).length === 0) {
+      return replyFn(`I found \`${issue.identifier}\`, but couldn't tell what to edit. Try: \`priority ${issue.identifier} P1\`, \`move ${issue.identifier} to tomorrow\`, or \`${issue.identifier} description <text>\`.`);
+    }
+
+    await linear.updateIssueFields(issue.id, updates);
+    const updatedIssue = await linear.findIssue(issue.identifier);
+    return replyFn(`✏️ updated ${await linear.formatIssue(updatedIssue)}`);
   }
 
   let m = trimmed.match(/^add\s+(.+)/is);

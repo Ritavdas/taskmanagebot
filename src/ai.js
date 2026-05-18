@@ -57,8 +57,38 @@ Respond with ONLY the intent word.
 
 Message: """{{MSG}}"""`;
 
+const EDIT_ISSUE_PROMPT = `You parse edits to an existing Linear issue.
+
+Supported fields:
+- dueDate: YYYY-MM-DD or null if the user explicitly asks to remove/clear the due date
+- priority: "P0", "P1", "P2", "P3", "P4", or null if not mentioned
+- description: string if the user asks to update/change/set/add description/details/notes/context
+- title: string if the user asks to rename/change title
+
+Rules:
+1. Extract exactly one issueRef from the message, e.g. RIT2-12.
+2. If the user says "due tomorrow", "move to friday", "set deadline today", output dueDate.
+3. Priority mapping: P0/urgent/critical → "P0"; P1/high/important → "P1"; P2/normal/default → "P2"; P3/low → "P3"; P4/none/no priority → "P4".
+4. For description, use the exact useful content after words like "description", "desc", "details", "notes", "context", "because", or "to".
+5. Do not invent missing fields.
+6. Omit fields that are not being updated. Only use null for dueDate when the user explicitly asks to clear/remove the due date.
+
+Return ONLY valid JSON:
+{
+  "issueRef": "RIT2-12",
+  "fields": {
+    "dueDate": "YYYY-MM-DD" | null,
+    "priority": "P0" | "P1" | "P2" | "P3" | "P4",
+    "description": "...",
+    "title": "..."
+  }
+}`;
+
 export async function routeIntent(message) {
   const trimmed = message.trim();
+  if (/\b[A-Z0-9]+-\d+\b/i.test(trimmed)) {
+    return 'command';
+  }
   if (/^(done|move|priority|prio|p0|p1|p2|p3|p4|blocked|drop|add|today|plan|list|inbox|yes|no|cancel|y|n|help)\b/i.test(trimmed)) {
     return 'command';
   }
@@ -73,6 +103,30 @@ export async function routeIntent(message) {
   const out = text.trim().toLowerCase();
   if (['command', 'dump', 'single_task', 'chitchat'].includes(out)) return out;
   return 'chitchat';
+}
+
+export async function parseIssueEdit(text) {
+  const today = new Date().toISOString().slice(0, 10);
+  const { text: raw } = await generateText({
+    model: model(),
+    system: EDIT_ISSUE_PROMPT + `\n\nToday's date: ${today}`,
+    prompt: text,
+    maxTokens: 1000,
+  });
+  const cleaned = raw.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '');
+  try {
+    const parsed = JSON.parse(cleaned);
+    const fields = parsed.fields && typeof parsed.fields === 'object' ? parsed.fields : {};
+    if (fields.dueDate === null && !/\b(clear|remove|delete|unset|no)\b.*\b(due|date|deadline)\b/i.test(text)) {
+      delete fields.dueDate;
+    }
+    return {
+      issueRef: typeof parsed.issueRef === 'string' ? parsed.issueRef : null,
+      fields,
+    };
+  } catch {
+    return { issueRef: null, fields: {} };
+  }
 }
 
 export async function parseTasks(text) {

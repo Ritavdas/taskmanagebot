@@ -122,7 +122,7 @@ export async function createIssue({ title, area, dueDate, description, context, 
 }
 
 export async function findIssue(ref) {
-  if (/^[A-Z]+-\d+$/i.test(ref)) {
+  if (/^[A-Z0-9]+-\d+$/i.test(ref)) {
     try {
       return await client.issue(ref.toUpperCase());
     } catch {
@@ -157,6 +157,20 @@ export async function setDueDate(issueId, dueDate) {
 
 export async function setPriority(issueId, priority) {
   await client.updateIssue(issueId, { priority: normalizePriority(priority) });
+}
+
+export async function updateIssueFields(issueId, fields) {
+  const input = {};
+  if (fields.title !== undefined) input.title = fields.title;
+  if (fields.description !== undefined) input.description = fields.description;
+  if (fields.dueDate !== undefined) input.dueDate = fields.dueDate;
+  if (fields.priority !== undefined) input.priority = normalizePriority(fields.priority);
+
+  if (Object.keys(input).length === 0) {
+    throw new Error('No supported issue fields were provided to update.');
+  }
+
+  await client.updateIssue(issueId, input);
 }
 
 export async function moveToToday(issueId) {

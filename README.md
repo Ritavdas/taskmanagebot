@@ -18,6 +18,9 @@ Apple Notes (raw thoughts) → Discord DM → AI parser → Linear (source of tr
   - `done PER-12` or `done linkedin` (substring match)
   - `move PER-12 to friday`
   - `priority PER-12 P0` or `p1 linkedin`
+  - `RIT2-12 change description to waiting for reply from vendor`
+  - `RIT2-12 set due date to tomorrow`
+  - `RIT2-12 make priority P1`
   - `blocked PER-12 because waiting on Tushar`
   - `drop PER-12`
   - `add P0 fix the launchpad bug for the meetup`
