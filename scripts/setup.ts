@@ -6,7 +6,15 @@ import { spawn } from 'node:child_process';
 
 const ENV_PATH = new URL('../.env', import.meta.url).pathname;
 
-const STEPS = [
+interface Step {
+  key: string;
+  title: string;
+  url?: string;
+  instructions: string[];
+  default?: string;
+}
+
+const STEPS: Step[] = [
   {
     key: 'OPENROUTER_API_KEY',
     title: 'OpenRouter API key',
@@ -68,51 +76,51 @@ const STEPS = [
   },
 ];
 
-function openInBrowser(url) {
+function openInBrowser(url: string | undefined): void {
   if (!url) return;
   const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
   try {
     spawn(cmd, [url], { stdio: 'ignore', detached: true }).unref();
-  } catch {}
+  } catch { /* ignore */ }
 }
 
-function loadExisting() {
+function loadExisting(): Record<string, string> {
   if (!existsSync(ENV_PATH)) return {};
-  const out = {};
+  const out: Record<string, string> = {};
   for (const line of readFileSync(ENV_PATH, 'utf8').split('\n')) {
     const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
-    if (m) out[m[1]] = m[2];
+    if (m?.[1] !== undefined && m[2] !== undefined) out[m[1]] = m[2];
   }
   return out;
 }
 
-function writeEnv(vars) {
+function writeEnv(vars: Record<string, string>): void {
   const lines = [
     '# Discord',
-    `DISCORD_BOT_TOKEN=${vars.DISCORD_BOT_TOKEN || ''}`,
-    `DISCORD_OWNER_ID=${vars.DISCORD_OWNER_ID || ''}`,
+    `DISCORD_BOT_TOKEN=${vars['DISCORD_BOT_TOKEN'] ?? ''}`,
+    `DISCORD_OWNER_ID=${vars['DISCORD_OWNER_ID'] ?? ''}`,
     '',
     '# Linear',
-    `LINEAR_API_KEY=${vars.LINEAR_API_KEY || ''}`,
-    `LINEAR_TEAM_KEY=${vars.LINEAR_TEAM_KEY || 'PER'}`,
+    `LINEAR_API_KEY=${vars['LINEAR_API_KEY'] ?? ''}`,
+    `LINEAR_TEAM_KEY=${vars['LINEAR_TEAM_KEY'] ?? 'PER'}`,
     '',
     '# AI (OpenRouter)',
-    `OPENROUTER_API_KEY=${vars.OPENROUTER_API_KEY || ''}`,
-    `OPENROUTER_MODEL=${vars.OPENROUTER_MODEL || 'anthropic/claude-sonnet-4.5'}`,
+    `OPENROUTER_API_KEY=${vars['OPENROUTER_API_KEY'] ?? ''}`,
+    `OPENROUTER_MODEL=${vars['OPENROUTER_MODEL'] ?? 'anthropic/claude-sonnet-4.5'}`,
     '',
     '# Schedule',
-    `TIMEZONE=${vars.TIMEZONE || 'Asia/Kolkata'}`,
-    `MORNING_CRON=${vars.MORNING_CRON || '30 10 * * *'}`,
-    `EVENING_CRON=${vars.EVENING_CRON || '30 22 * * *'}`,
+    `TIMEZONE=${vars['TIMEZONE'] ?? 'Asia/Kolkata'}`,
+    `MORNING_CRON=${vars['MORNING_CRON'] ?? '30 10 * * *'}`,
+    `EVENING_CRON=${vars['EVENING_CRON'] ?? '30 22 * * *'}`,
     '',
     '# Set to true to skip cron (useful for dev)',
-    `DISABLE_CRON=${vars.DISABLE_CRON || 'false'}`,
+    `DISABLE_CRON=${vars['DISABLE_CRON'] ?? 'false'}`,
     '',
   ];
   writeFileSync(ENV_PATH, lines.join('\n'));
 }
 
-async function main() {
+async function main(): Promise<void> {
   const rl = createInterface({ input: stdin, output: stdout });
   const existing = loadExisting();
 

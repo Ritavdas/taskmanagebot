@@ -37,6 +37,8 @@ Apple Notes (raw thoughts) → Discord DM → AI parser → Linear (source of tr
 npm install
 ```
 
+> Requires Node 22+. The bot is written in TypeScript and runs directly via [tsx](https://github.com/privatenumber/tsx) — no build step.
+
 ### 2. Run interactive setup
 
 ```bash
@@ -120,14 +122,13 @@ pm2 startup
 
 ## Architecture
 
-- `src/index.js` — Discord client, cron scheduler, message router
-- `src/linear.js` — Linear API wrapper (CRUD + state/project caching)
-- `src/ai.js` — OpenRouter-powered intent parsing, priority parsing, and task extraction
-- `src/commands.js` — Conversational command handlers
-- `src/digest.js` — Morning digest builder
-- `src/closeout.js` — Evening close-out builder
-- `src/bootstrap.js` — One-time Linear setup
-- `scripts/setup.js` — Interactive credential setup
+- `src/index.ts` — composition root: parses env, wires adapters, registers cron + message handler
+- `src/domain/` — pure types: `task.ts` (Task, Priority, Area), `command.ts` (Command discriminated union + parser), `date.ts` (tz-aware date helpers)
+- `src/infra/` — external boundaries: `env.ts` (Zod-parsed config), `linear.ts` (Linear SDK adapter), `ai.ts` (OpenRouter via Vercel AI SDK + `generateObject`), `discord.ts` (discord.js client), `scheduler.ts` (croner wrapper)
+- `src/app/` — handlers: `router.ts` (intent routing), `commands.ts` (exhaustive switch over Command), `digest.ts`, `closeout.ts`, `pending-edits.ts`
+- `src/bootstrap.ts` — one-time Linear project setup
+- `scripts/setup.ts` — interactive credential setup
+- `tests/` — Vitest unit tests for date / commands / task
 
 ## Status lifecycle
 
