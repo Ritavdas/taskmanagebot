@@ -2,7 +2,7 @@ import * as linear from './linear.js';
 import * as ai from './ai.js';
 
 export async function buildMorningDigest() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = linear.todayLocal();
   const [overdue, dueToday, inProgress] = await Promise.all([
     linear.getOverdue(),
     linear.getTodayList().then(list => list.filter(i => i.dueDate === today)),
