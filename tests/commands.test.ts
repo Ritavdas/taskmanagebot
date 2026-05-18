@@ -19,6 +19,13 @@ describe('looksLikeCommand', () => {
   it('rejects free-form text', () => {
     expect(looksLikeCommand('I want to write a blog post about react')).toBe(false);
   });
+  it('detects project commands', () => {
+    expect(looksLikeCommand('projects')).toBe(true);
+    expect(looksLikeCommand('project new Friend Catch-ups')).toBe(true);
+    expect(looksLikeCommand('create a new project for friend-catch-up tasks')).toBe(true);
+    expect(looksLikeCommand('make a project called Vendor Outreach')).toBe(true);
+    expect(looksLikeCommand('list projects')).toBe(true);
+  });
 });
 
 describe('parseCommand', () => {
@@ -121,5 +128,50 @@ describe('parseCommand', () => {
   it('rejects unknown input', () => {
     const result = parseCommand(TZ, 'gibberish');
     expect(result.ok).toBe(false);
+  });
+
+  it('parses explicit project commands', () => {
+    expect(parseCommand(TZ, 'projects')).toEqual({
+      ok: true, command: { kind: 'project_list' },
+    });
+    expect(parseCommand(TZ, 'project list')).toEqual({
+      ok: true, command: { kind: 'project_list' },
+    });
+    expect(parseCommand(TZ, 'project new Friend Catch-ups')).toEqual({
+      ok: true, command: { kind: 'project_new', name: 'Friend Catch-ups' },
+    });
+  });
+
+  it('parses natural-language project creation', () => {
+    expect(parseCommand(TZ, 'create a new project for friend-catch-up tasks')).toEqual({
+      ok: true, command: { kind: 'project_new', name: 'friend-catch-up' },
+    });
+    expect(parseCommand(TZ, 'make a project called Vendor Outreach')).toEqual({
+      ok: true, command: { kind: 'project_new', name: 'Vendor Outreach' },
+    });
+    expect(parseCommand(TZ, 'new project: Side Hustles')).toEqual({
+      ok: true, command: { kind: 'project_new', name: 'Side Hustles' },
+    });
+  });
+
+  it('parses natural-language project listing', () => {
+    expect(parseCommand(TZ, 'list all projects')).toEqual({
+      ok: true, command: { kind: 'project_list' },
+    });
+    expect(parseCommand(TZ, 'show projects')).toEqual({
+      ok: true, command: { kind: 'project_list' },
+    });
+  });
+
+  it('parses project refresh', () => {
+    expect(parseCommand(TZ, 'refresh projects')).toEqual({
+      ok: true, command: { kind: 'project_refresh' },
+    });
+    expect(parseCommand(TZ, 'projects refresh')).toEqual({
+      ok: true, command: { kind: 'project_refresh' },
+    });
+    expect(parseCommand(TZ, 'sync projects')).toEqual({
+      ok: true, command: { kind: 'project_refresh' },
+    });
   });
 });

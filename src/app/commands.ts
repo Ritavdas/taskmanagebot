@@ -45,6 +45,7 @@ const HELP_TEXT = [
   '`drop <ref>` — cancel',
   '`list` — today\'s tasks',
   '`inbox` — triage queue',
+  '`projects` — list projects · `project new <name>` — create one · `refresh projects` — re-sync from Linear',
   '',
   '_or just dump thoughts and I\'ll triage them._',
 ].join('\n');
@@ -143,6 +144,24 @@ export async function handleCommand(command: Command, reply: Reply, deps: Deps):
       if (error || !task) return reply(error ?? 'not found');
       await linear.markDropped(task.id);
       return reply(`🗑️ dropped · \`${task.identifier}\` ${task.title}`);
+    }
+
+    case 'project_new': {
+      const { name, created } = await linear.ensureProject(command.name);
+      if (!created) return reply(`📁 project "${name}" already exists.`);
+      return reply(`📁 created project "${name}".`);
+    }
+
+    case 'project_list': {
+      const projects = await linear.listProjects();
+      if (projects.length === 0) return reply('no projects yet. try `project new <name>`.');
+      const lines = projects.map(p => `• ${p.name}`).join('\n');
+      return reply(`**projects** (${projects.length})\n${lines}`);
+    }
+
+    case 'project_refresh': {
+      const count = await linear.refreshProjects();
+      return reply(`🔄 re-synced from Linear · ${count} project${count === 1 ? '' : 's'} cached.`);
     }
 
     case 'edit': {

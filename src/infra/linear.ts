@@ -33,7 +33,9 @@ export interface FindIssueResult {
 export interface LinearAdapter {
   init(): Promise<void>;
   listAreas(): string[];
-  ensureProject(name: string): Promise<{ name: string }>;
+  listProjects(): Promise<Array<{ name: string }>>;
+  refreshProjects(): Promise<number>;
+  ensureProject(name: string): Promise<{ name: string; created: boolean }>;
   createIssue(input: TaskInput): Promise<Task>;
   findIssue(ref: string): Promise<FindIssueResult>;
   updateIssue(id: string, fields: IssueUpdateFields): Promise<Task>;
@@ -143,12 +145,28 @@ export function createLinearAdapter(opts: { apiKey: string; teamKey: string; tim
     async ensureProject(name) {
       const c = requireCache();
       const existing = c.projects.get(name.toLowerCase());
-      if (existing) return { name: existing.name };
+      if (existing) return { name: existing.name, created: false };
       const res = await client.createProject({ teamIds: [c.team.id], name });
       const project = await res.project;
       if (!project) throw new Error(`Failed to create project "${name}".`);
       c.projects.set(project.name.toLowerCase(), project);
-      return { name: project.name };
+      return { name: project.name, created: true };
+    },
+
+    async listProjects() {
+      const c = requireCache();
+      return Array.from(c.projects.values())
+        .map(p => ({ name: p.name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    },
+
+    async refreshProjects() {
+      const c = requireCache();
+      const projectsRes = await c.team.projects();
+      const fresh = new Map<string, Project>();
+      for (const p of projectsRes.nodes) fresh.set(p.name.toLowerCase(), p);
+      c.projects = fresh;
+      return fresh.size;
     },
 
     async createIssue(input) {

@@ -21,6 +21,7 @@ async function main(): Promise<void> {
     apiKey: config.ai.apiKey,
     modelId: config.ai.model,
     timezone: config.schedule.timezone,
+    getAreas: () => linear.listAreas(),
   });
   const discord = createDiscordAdapter({
     token: config.discord.token,

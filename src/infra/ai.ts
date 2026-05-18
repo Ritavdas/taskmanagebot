@@ -1,7 +1,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { generateText, generateObject } from 'ai';
 import { z } from 'zod';
-import { AreaSchema, AREAS, PriorityCodeSchema, type Task } from '../domain/task.ts';
+import { PriorityCodeSchema, type Task } from '../domain/task.ts';
 import { todayLocal } from '../domain/date.ts';
 
 export type Intent = 'command' | 'dump' | 'single_task' | 'chitchat';
@@ -9,7 +9,7 @@ export type Intent = 'command' | 'dump' | 'single_task' | 'chitchat';
 const ParseTasksOutputSchema = z.object({
   tasks: z.array(z.object({
     title: z.string().min(1).max(120),
-    area: AreaSchema.nullable(),
+    area: z.string().nullable(),
     priority: PriorityCodeSchema.nullable(),
     dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
     context: z.string().nullable(),
@@ -34,20 +34,26 @@ export type IssueEditOutput = z.infer<typeof IssueEditOutputSchema>;
 const INTENT_VALUES = ['command', 'dump', 'single_task', 'chitchat'] as const;
 const IntentSchema = z.enum(INTENT_VALUES);
 
-const PARSE_TASK_PROMPT = `You are the parser layer of a personal task OS for Ritav Das, a software engineer at Microsoft Hyderabad.
+const PARSE_TASK_PROMPT_HEADER = `You are the parser layer of a personal task OS for Ritav Das, a software engineer at Microsoft Hyderabad.
 
-Your job: take a freeform brain dump and extract concrete next actions.
+Your job: take a freeform brain dump and extract concrete next actions.`;
 
-Areas (pick exactly one per task):
-${AREAS.map(a => `- ${a}`).join('\n')}
-
-Rules:
+const PARSE_TASK_PROMPT_RULES = `Rules:
 1. Only extract things that are clear next actions. Vague thoughts/feelings → skip them.
-2. Each task needs a short imperative title (max 10 words), a single area, optional priority, and optional dueDate (YYYY-MM-DD) if stated.
+2. Each task needs a short imperative title (max 10 words), a single area (must be exactly one of the area names above, or null if none fit), optional priority, and optional dueDate (YYYY-MM-DD) if stated.
 3. If user mentions "today" → dueDate is today. "tomorrow" → tomorrow. "friday" → next friday. "next week" → leave dueDate null.
 4. If something is just a thought, idea, or feeling without an action → put it in "thoughts" array, not "tasks".
 5. Professional work tasks must be sanitized — no internal Microsoft/Azure project names, no customer details, no confidential info. Generalize them.
 6. Priority mapping: P0/urgent/critical → "P0"; P1/high/important → "P1"; P2/normal/default → "P2"; P3/low/someday → "P3"; no stated priority → null.`;
+
+function buildParseTaskPrompt(areas: string[]): string {
+  return `${PARSE_TASK_PROMPT_HEADER}
+
+Areas (pick exactly one per task, or null if nothing fits):
+${areas.map(a => `- ${a}`).join('\n')}
+
+${PARSE_TASK_PROMPT_RULES}`;
+}
 
 const ROUTE_INTENT_PROMPT = `You are the intent router for a personal task bot. Classify the user's message into ONE intent.
 
@@ -86,9 +92,17 @@ export interface AIAdapter {
 const STARTS_WITH_REF = /^[A-Z][A-Z0-9]*-\d+\b/;
 const ISSUE_REF = /\b[A-Z][A-Z0-9]*-\d+\b/;
 const EDIT_KEYWORDS = /\b(change|set|update|make|rename|edit|move|due|priority|prio|description|desc|details|notes|context|deadline|title|clear|remove|delete|unset|today|tomorrow|p[0-4])\b/i;
-const COMMAND_KEYWORD = /^(done|move|priority|prio|p0|p1|p2|p3|p4|blocked|drop|add|today|plan|list|inbox|yes|no|cancel|y|n|help)\b/i;
+const COMMAND_KEYWORD = /^(done|move|priority|prio|p0|p1|p2|p3|p4|blocked|drop|add|today|plan|list|inbox|yes|no|cancel|y|n|help|projects?|refresh|reload|sync)\b/i;
+const PROJECT_NL = /^(?:create|make|add|new|start|set\s*up|setup)\s+(?:a\s+|an\s+)?(?:new\s+)?project\b/i;
+const PROJECT_LIST_NL = /^(?:list|show|all|see)\s+(?:all\s+)?projects?\b/i;
 
-export function createAIAdapter(opts: { apiKey: string; modelId: string; timezone: string }): AIAdapter {
+export function createAIAdapter(opts: {
+  apiKey: string;
+  modelId: string;
+  timezone: string;
+  /** Snapshot accessor for live area/project names. Called per request; should be cheap (in-memory). */
+  getAreas: () => string[];
+}): AIAdapter {
   const client = createOpenAI({
     baseURL: 'https://openrouter.ai/api/v1',
     apiKey: opts.apiKey,
@@ -106,6 +120,7 @@ export function createAIAdapter(opts: { apiKey: string; modelId: string; timezon
         return 'command';
       }
       if (COMMAND_KEYWORD.test(trimmed)) return 'command';
+      if (PROJECT_NL.test(trimmed) || PROJECT_LIST_NL.test(trimmed)) return 'command';
       if (trimmed.length < 250 && !trimmed.includes('\n')) return 'single_task';
 
       const { text } = await generateText({
@@ -120,15 +135,22 @@ export function createAIAdapter(opts: { apiKey: string; modelId: string; timezon
 
     async parseTasks(text) {
       const today = todayLocal(opts.timezone);
+      const areas = opts.getAreas();
+      const areaSet = new Set(areas.map(a => a.toLowerCase()));
       try {
         const { object } = await generateObject({
           model,
           schema: ParseTasksOutputSchema,
-          system: `${PARSE_TASK_PROMPT}\n\nToday's date: ${today}`,
+          system: `${buildParseTaskPrompt(areas)}\n\nToday's date: ${today}`,
           prompt: text,
           maxOutputTokens: 2000,
         });
-        return object;
+        // Drop any hallucinated area names not in the live project list.
+        const tasks = object.tasks.map(t => ({
+          ...t,
+          area: t.area && areaSet.has(t.area.toLowerCase()) ? t.area : null,
+        }));
+        return { tasks, thoughts: object.thoughts };
       } catch (err) {
         console.error('parseTasks failed:', err);
         return { tasks: [], thoughts: [text] };

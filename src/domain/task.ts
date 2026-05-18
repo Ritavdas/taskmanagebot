@@ -4,7 +4,7 @@ export const PRIORITY_CODES = ['P0', 'P1', 'P2', 'P3', 'P4'] as const;
 export const PriorityCodeSchema = z.enum(PRIORITY_CODES);
 export type PriorityCode = z.infer<typeof PriorityCodeSchema>;
 
-export const AREAS = [
+export const DEFAULT_AREAS = [
   'Professional Work',
   'Content Creation',
   'Meetup/Community',
@@ -12,7 +12,9 @@ export const AREAS = [
   'Relationship/Family',
   'Health/Fitness',
 ] as const;
-export const AreaSchema = z.enum(AREAS);
+/** @deprecated Use DEFAULT_AREAS for bootstrap or LinearAdapter.listAreas() for live. */
+export const AREAS = DEFAULT_AREAS;
+export const AreaSchema = z.enum(DEFAULT_AREAS);
 export type Area = z.infer<typeof AreaSchema>;
 
 const PRIORITY_TO_NUM: Record<PriorityCode, number> = {
@@ -75,7 +77,7 @@ export interface Task {
 
 export const TaskInputSchema = z.object({
   title: z.string().min(1),
-  area: AreaSchema.nullable(),
+  area: z.string().nullable(),
   priority: PriorityCodeSchema.nullable(),
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   context: z.string().nullable(),

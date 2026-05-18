@@ -1,6 +1,6 @@
 import { config } from './infra/env.ts';
 import { createLinearAdapter } from './infra/linear.ts';
-import { AREAS } from './domain/task.ts';
+import { DEFAULT_AREAS } from './domain/task.ts';
 
 async function main(): Promise<void> {
   console.log(`Bootstrapping Linear team "${config.linear.teamKey}"...`);
@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   await linear.init();
   console.log('✓ team found.');
 
-  for (const area of AREAS) {
+  for (const area of DEFAULT_AREAS) {
     const project = await linear.ensureProject(area);
     console.log(`✓ project: ${project.name}`);
   }

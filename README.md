@@ -28,6 +28,7 @@ Apple Notes (raw thoughts) → Discord DM → AI parser → Linear (source of tr
   - `plan PER-12` (move from inbox to planned)
   - `list` (show today's tasks)
   - `inbox` (show triage queue)
+  - `projects` (list projects) or `project new <name>` (create a project; natural-language variants like "create a project for friend catch-ups" also work)
 
 ## Setup
 
