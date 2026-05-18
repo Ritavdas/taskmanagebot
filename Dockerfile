@@ -17,8 +17,8 @@ COPY . .
 
 RUN npx tsc --noEmit
 
-# Trim devDependencies for the runtime image.
-RUN npm prune --omit=dev && npm install --no-save tsx@^4.22.2 typescript@^6.0.3
+# Trim devDependencies for the runtime image. tsx is a runtime dep so it survives.
+RUN npm prune --omit=dev
 
 EXPOSE 3000
 CMD [ "npm", "run", "start" ]
