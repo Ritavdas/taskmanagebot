@@ -14,9 +14,48 @@ const ParseTasksOutputSchema = z.object({
     dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
     context: z.string().nullable(),
   })),
-  thoughts: z.array(z.string()),
+  thoughts: z.array(z.string()).default([]),
 });
 export type ParsedTasks = z.infer<typeof ParseTasksOutputSchema>;
+
+/**
+ * Best-effort repair for malformed/truncated JSON from weaker models.
+ * Strips code fences, closes unterminated strings/brackets, and removes
+ * trailing commas so generateObject can recover instead of throwing.
+ */
+function repairJsonText({ text }: { text: string }): Promise<string | null> {
+  let s = text.trim();
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence?.[1]) s = fence[1].trim();
+  const start = s.indexOf('{');
+  if (start < 0) return Promise.resolve(null);
+  s = s.slice(start);
+
+  const closers: string[] = [];
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') closers.push('}');
+    else if (ch === '[') closers.push(']');
+    else if (ch === '}' || ch === ']') closers.pop();
+  }
+
+  let out = s;
+  if (inString) out += '"';
+  out = out.replace(/[,\s]+$/, '');
+  out = out.replace(/:\s*$/, ': null');
+  for (let i = closers.length - 1; i >= 0; i--) out += closers[i];
+  out = out.replace(/,(\s*[}\]])/g, '$1');
+  return Promise.resolve(out);
+}
 
 const IssueEditFieldsSchema = z.object({
   title: z.string().optional(),
@@ -144,6 +183,7 @@ export function createAIAdapter(opts: {
           system: `${buildParseTaskPrompt(areas)}\n\nToday's date: ${today}`,
           prompt: text,
           maxOutputTokens: 2000,
+          experimental_repairText: repairJsonText,
         });
         // Drop any hallucinated area names not in the live project list.
         const tasks = object.tasks.map(t => ({
@@ -153,6 +193,14 @@ export function createAIAdapter(opts: {
         return { tasks, thoughts: object.thoughts };
       } catch (err) {
         console.error('parseTasks failed:', err);
+        // Deterministic fallback: never lose a clear short action to a flaky LLM JSON failure.
+        const trimmed = text.trim();
+        if (trimmed && trimmed.length <= 120 && !trimmed.includes('\n')) {
+          return {
+            tasks: [{ title: trimmed, area: null, priority: null, dueDate: null, context: null }],
+            thoughts: [],
+          };
+        }
         return { tasks: [], thoughts: [text] };
       }
     },
@@ -166,6 +214,7 @@ export function createAIAdapter(opts: {
           system: `${EDIT_ISSUE_PROMPT}\n\nToday's date: ${today}`,
           prompt: text,
           maxOutputTokens: 1000,
+          experimental_repairText: repairJsonText,
         });
         if (object.fields.dueDate === null &&
             !/\b(clear|remove|delete|unset|no)\b.*\b(due|date|deadline)\b/i.test(text)) {
